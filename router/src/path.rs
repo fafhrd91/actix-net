@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::{fmt, ops::Index};
 
 use serde::de;
 
@@ -41,7 +41,10 @@ impl<T: Clone> Clone for Path<T> {
     }
 }
 
-impl<T: ResourcePath> Path<T> {
+impl<T> Path<T>
+where
+    T: ResourcePath + fmt::Debug,
+{
     pub fn new(path: T) -> Path<T> {
         Path {
             path,
@@ -177,7 +180,10 @@ pub struct PathIter<'a, T> {
     params: &'a Path<T>,
 }
 
-impl<'a, T: ResourcePath> Iterator for PathIter<'a, T> {
+impl<'a, T> Iterator for PathIter<'a, T>
+where
+    T: ResourcePath + fmt::Debug,
+{
     type Item = (&'a str, &'a str);
 
     #[inline]
@@ -195,7 +201,10 @@ impl<'a, T: ResourcePath> Iterator for PathIter<'a, T> {
     }
 }
 
-impl<'a, T: ResourcePath> Index<&'a str> for Path<T> {
+impl<'a, T> Index<&'a str> for Path<T>
+where
+    T: ResourcePath + fmt::Debug,
+{
     type Output = str;
 
     fn index(&self, name: &'a str) -> &str {

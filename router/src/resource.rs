@@ -1,6 +1,6 @@
-use std::cmp::min;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::{cmp::min, fmt};
 
 use regex::{escape, Regex, RegexSet};
 
@@ -241,7 +241,7 @@ impl ResourceDef {
     }
 
     /// Is the given path and parameters a match against this pattern.
-    pub fn match_path<T: ResourcePath>(&self, path: &mut Path<T>) -> bool {
+    pub fn match_path<T: ResourcePath + fmt::Debug>(&self, path: &mut Path<T>) -> bool {
         match self.tp {
             PatternType::Static(ref s) => {
                 if s == path.path() {
@@ -345,7 +345,7 @@ impl ResourceDef {
         user_data: &Option<U>,
     ) -> bool
     where
-        T: ResourcePath,
+        T: ResourcePath + fmt::Debug,
         R: Resource<T>,
         F: Fn(&R, &Option<U>) -> bool,
     {

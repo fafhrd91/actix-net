@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::de::{self, Deserializer, Error as DeError, Visitor};
 use serde::forward_to_deserialize_any;
 
@@ -42,17 +44,24 @@ macro_rules! parse_single_value {
     };
 }
 
-pub struct PathDeserializer<'de, T: ResourcePath> {
+#[derive(Debug)]
+pub struct PathDeserializer<'de, T: ResourcePath + fmt::Debug> {
     path: &'de Path<T>,
 }
 
-impl<'de, T: ResourcePath + 'de> PathDeserializer<'de, T> {
+impl<'de, T> PathDeserializer<'de, T>
+where
+    T: ResourcePath + fmt::Debug + 'de,
+{
     pub fn new(path: &'de Path<T>) -> Self {
         PathDeserializer { path }
     }
 }
 
-impl<'de, T: ResourcePath + 'de> Deserializer<'de> for PathDeserializer<'de, T> {
+impl<'de, T> Deserializer<'de> for PathDeserializer<'de, T>
+where
+    T: ResourcePath + fmt::Debug + 'de,
+{
     type Error = de::value::Error;
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -103,6 +112,7 @@ impl<'de, T: ResourcePath + 'de> Deserializer<'de> for PathDeserializer<'de, T> 
     where
         V: Visitor<'de>,
     {
+        eprintln!("heres my newtype");
         visitor.visit_newtype_struct(self)
     }
 
@@ -154,15 +164,19 @@ impl<'de, T: ResourcePath + 'de> Deserializer<'de> for PathDeserializer<'de, T> 
     fn deserialize_enum<V>(
         self,
         _: &'static str,
-        _: &'static [&'static str],
+        variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
+        eprintln!("variants: {:?}", &variants);
+
         if self.path.is_empty() {
             Err(de::value::Error::custom("expected at least one parameters"))
         } else {
+            eprintln!("{:?}", &self.path[0]);
+
             visitor.visit_enum(ValueEnum {
                 value: &self.path[0],
             })
@@ -191,7 +205,16 @@ impl<'de, T: ResourcePath + 'de> Deserializer<'de> for PathDeserializer<'de, T> 
         })
     }
 
-    unsupported_type!(deserialize_any, "'any'");
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        match self.path[0].parse::<u64>() {
+            Ok(int) => visitor.visit_u64(int),
+            Err(_) => visitor.visit_str(&self.path[0]),
+        }
+    }
+
     unsupported_type!(deserialize_bytes, "bytes");
     unsupported_type!(deserialize_option, "Option<T>");
     unsupported_type!(deserialize_identifier, "identifier");
@@ -218,7 +241,10 @@ struct ParamsDeserializer<'de, T: ResourcePath> {
     current: Option<(&'de str, &'de str)>,
 }
 
-impl<'de, T: ResourcePath> de::MapAccess<'de> for ParamsDeserializer<'de, T> {
+impl<'de, T> de::MapAccess<'de> for ParamsDeserializer<'de, T>
+where
+    T: ResourcePath + fmt::Debug,
+{
     type Error = de::value::Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -262,6 +288,7 @@ impl<'de> Deserializer<'de> for Key<'de> {
     where
         V: Visitor<'de>,
     {
+        eprintln!("Key::deserialize_any");
         Err(de::value::Error::custom("Unexpected"))
     }
 
@@ -312,6 +339,7 @@ impl<'de> Deserializer<'de> for Value<'de> {
     where
         V: Visitor<'de>,
     {
+        eprintln!("Value::deserialize_ignored_any");
         visitor.visit_unit()
     }
 
@@ -418,7 +446,10 @@ struct ParamsSeq<'de, T: ResourcePath> {
     params: PathIter<'de, T>,
 }
 
-impl<'de, T: ResourcePath> de::SeqAccess<'de> for ParamsSeq<'de, T> {
+impl<'de, T> de::SeqAccess<'de> for ParamsSeq<'de, T>
+where
+    T: ResourcePath + fmt::Debug,
+{
     type Error = de::value::Error;
 
     fn next_element_seed<U>(&mut self, seed: U) -> Result<Option<U::Value>, Self::Error>
@@ -432,8 +463,10 @@ impl<'de, T: ResourcePath> de::SeqAccess<'de> for ParamsSeq<'de, T> {
     }
 }
 
+#[derive(Debug)]
 struct ValueEnum<'de> {
     value: &'de str,
+    // todo there maybe must be some state here to decide on which variant to use
 }
 
 impl<'de> de::EnumAccess<'de> for ValueEnum<'de> {
@@ -444,6 +477,9 @@ impl<'de> de::EnumAccess<'de> for ValueEnum<'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
+        // eprintln!("seed:  {:?}", &seed);
+        eprintln!("value: {:?}", &self.value);
+
         Ok((seed.deserialize(Key { key: self.value })?, UnitVariant))
     }
 }
@@ -454,6 +490,7 @@ impl<'de> de::VariantAccess<'de> for UnitVariant {
     type Error = de::value::Error;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
+        eprintln!("try unit variant");
         Ok(())
     }
 
@@ -461,6 +498,7 @@ impl<'de> de::VariantAccess<'de> for UnitVariant {
     where
         T: de::DeserializeSeed<'de>,
     {
+        eprintln!("try newtype variant");
         Err(de::value::Error::custom("not supported"))
     }
 
@@ -468,6 +506,7 @@ impl<'de> de::VariantAccess<'de> for UnitVariant {
     where
         V: Visitor<'de>,
     {
+        eprintln!("try tuple variant");
         Err(de::value::Error::custom("not supported"))
     }
 
@@ -479,6 +518,7 @@ impl<'de> de::VariantAccess<'de> for UnitVariant {
     where
         V: Visitor<'de>,
     {
+        eprintln!("try struct variant");
         Err(de::value::Error::custom("not supported"))
     }
 }
@@ -512,6 +552,11 @@ mod tests {
         value: u32,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct Test3 {
+        val: TestEnum,
+    }
+
     #[derive(Debug, Deserialize, PartialEq)]
     #[serde(rename_all = "lowercase")]
     enum TestEnum {
@@ -519,9 +564,72 @@ mod tests {
         Val2,
     }
 
-    #[derive(Debug, Deserialize)]
-    struct Test3 {
-        val: TestEnum,
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub enum TestEnum2 {
+        Int(u32),
+        String(String),
+    }
+
+    #[allow(non_snake_case)]
+    mod __TestEnum2 {
+        use std::fmt;
+
+        use serde::{
+            export::{Err as SErr, Ok as SOk, Result as SResult},
+            private::de::{Content, ContentRefDeserializer},
+            Deserialize,
+        };
+
+        use super::TestEnum2;
+
+        impl<'de> serde::Deserialize<'de> for TestEnum2 {
+            fn deserialize<D>(deserializer: D) -> SResult<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                eprintln!(
+                    "!!derive!! deserializer: {:?}",
+                    &deserializer.is_human_readable()
+                );
+
+                let content = match <Content<'_> as Deserialize>::deserialize(deserializer) {
+                    SOk(val) => {
+                        eprintln!("!!derive!! content val: {:?}", &val);
+                        val
+                    }
+                    SErr(err) => {
+                        eprintln!("!!derive!! content err: {:?}", &err);
+                        return SErr(err);
+                    }
+                };
+
+                let cnt1 = ContentRefDeserializer::<D::Error>::new(&content);
+                let de1 = <u32 as Deserialize>::deserialize(cnt1);
+
+                // eprintln!("!!derive!! cnt1: {:?}", &cnt1);
+                eprintln!("!!derive!! de1: {:?}", &de1);
+
+                if let SOk(ok) = SResult::map(de1, TestEnum2::Int) {
+                    eprintln!("!!derive!! de1 map ok: {:?}", &ok);
+                    return SOk(ok);
+                }
+
+                let cnt2 = ContentRefDeserializer::<D::Error>::new(&content);
+                let de2 = <String as Deserialize>::deserialize(cnt2);
+
+                // eprintln!("!!derive!! cnt2: {:?}", &cnt2);
+                eprintln!("!!derive!! de2: {:?}", &de2);
+
+                if let SOk(ok) = SResult::map(de2, TestEnum2::String) {
+                    eprintln!("!!derive!! de2 map ok: {:?}", &ok);
+                    return SOk(ok);
+                }
+
+                SErr(serde::de::Error::custom(
+                    "data did not match any variant of untagged enum TestEnum2",
+                ))
+            }
+        }
     }
 
     #[test]
@@ -590,6 +698,16 @@ mod tests {
         assert!(router.recognize(&mut path).is_some());
         let i: TestEnum = de::Deserialize::deserialize(PathDeserializer::new(&path)).unwrap();
         assert_eq!(i, TestEnum::Val1);
+
+        let mut path = Path::new("/22/");
+        assert!(router.recognize(&mut path).is_some());
+        let i: TestEnum2 = de::Deserialize::deserialize(PathDeserializer::new(&path)).unwrap();
+        assert_eq!(i, TestEnum2::Int(22));
+
+        let mut path = Path::new("/abc/");
+        assert!(router.recognize(&mut path).is_some());
+        let i: TestEnum2 = de::Deserialize::deserialize(PathDeserializer::new(&path)).unwrap();
+        assert_eq!(i, TestEnum2::String("abc".to_owned()));
 
         let mut router = Router::<()>::build();
         router.path("/{val1}/{val2}/", ());

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::{IntoPattern, Resource, ResourceDef, ResourcePath};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -22,7 +24,7 @@ impl<T, U> Router<T, U> {
     pub fn recognize<R, P>(&self, resource: &mut R) -> Option<(&T, ResourceId)>
     where
         R: Resource<P>,
-        P: ResourcePath,
+        P: ResourcePath + fmt::Debug,
     {
         for item in self.0.iter() {
             if item.0.match_path(resource.resource_path()) {
@@ -35,7 +37,7 @@ impl<T, U> Router<T, U> {
     pub fn recognize_mut<R, P>(&mut self, resource: &mut R) -> Option<(&mut T, ResourceId)>
     where
         R: Resource<P>,
-        P: ResourcePath,
+        P: ResourcePath + fmt::Debug,
     {
         for item in self.0.iter_mut() {
             if item.0.match_path(resource.resource_path()) {
@@ -53,7 +55,7 @@ impl<T, U> Router<T, U> {
     where
         F: Fn(&R, &Option<U>) -> bool,
         R: Resource<P>,
-        P: ResourcePath,
+        P: ResourcePath + fmt::Debug,
     {
         for item in self.0.iter_mut() {
             if item.0.match_path_checked(resource, &check, &item.2) {
