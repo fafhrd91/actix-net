@@ -16,12 +16,12 @@
 //!
 //! # Examples
 //! ```
-//! use std::sync::mpsc;
+//! use std::sync::mpsc::channel as std_channel;
 //! use actix_rt::{Arbiter, System};
 //!
-//! let _ = System::new();
+//! let sys = System::new();
 //!
-//! let (tx, rx) = mpsc::channel::<u32>();
+//! let (tx, rx) = std_channel::<u32>();
 //!
 //! let arbiter = Arbiter::new();
 //! arbiter.spawn_fn(move || tx.send(42).unwrap());
@@ -30,7 +30,10 @@
 //! assert_eq!(num, 42);
 //!
 //! arbiter.stop();
-//! arbiter.join().unwrap();
+//! sys.block_on(arbiter.join());
+//!
+//! System::current().stop();
+//! sys.run().unwrap();
 //! ```
 
 #![deny(rust_2018_idioms, nonstandard_style)]

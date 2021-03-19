@@ -54,13 +54,8 @@ impl System {
         let (sys_tx, sys_rx) = mpsc::unbounded_channel();
 
         let rt = Runtime::from(runtime_factory());
-        let sys_arbiter = Arbiter::in_new_system(rt.local_set());
+        let sys_arbiter = Arbiter::for_system(rt.local_set());
         let system = System::construct(sys_tx, sys_arbiter.clone());
-
-        system
-            .tx()
-            .send(SystemCommand::RegisterArbiter(usize::MAX, sys_arbiter))
-            .unwrap();
 
         // init background system arbiter
         let sys_ctrl = SystemController::new(sys_rx, stop_tx);
@@ -150,7 +145,10 @@ impl System {
 }
 
 /// Runner that keeps a [System]'s event loop alive until stop message is received.
-#[must_use = "A SystemRunner does nothing unless `run` is called."]
+///
+/// Dropping the `SystemRunner` (eg. `let _ = System::new();`) will result in no further events
+/// being processed. It is required you bind the runner and call `run` or call `block_on`.
+#[must_use = "A SystemRunner does nothing unless `run` or `block_on` is called."]
 #[derive(Debug)]
 pub struct SystemRunner {
     rt: Runtime,
@@ -190,7 +188,7 @@ impl SystemRunner {
 #[derive(Debug)]
 pub(crate) enum SystemCommand {
     Exit(i32),
-    RegisterArbiter(usize, ArbiterHandle),
+    RegisterArbiter(Arbiter),
     DeregisterArbiter(usize),
 }
 
@@ -200,7 +198,7 @@ pub(crate) enum SystemCommand {
 pub(crate) struct SystemController {
     stop_tx: Option<oneshot::Sender<i32>>,
     cmd_rx: mpsc::UnboundedReceiver<SystemCommand>,
-    arbiters: HashMap<usize, ArbiterHandle>,
+    arbiters: HashMap<usize, Arbiter>,
 }
 
 impl SystemController {
@@ -221,35 +219,42 @@ impl Future for SystemController {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // process all items currently buffered in channel
-        loop {
+        let code = loop {
             match ready!(Pin::new(&mut self.cmd_rx).poll_recv(cx)) {
                 // channel closed; no more messages can be received
-                None => return Poll::Ready(()),
+                None => break 0,
 
                 // process system command
                 Some(cmd) => match cmd {
                     SystemCommand::Exit(code) => {
                         // stop all arbiters
                         for arb in self.arbiters.values() {
+                            eprintln!("SystemController: stopping arbiter {}", arb.id());
                             arb.stop();
                         }
 
-                        // stop event loop
-                        // will only fire once
-                        if let Some(stop_tx) = self.stop_tx.take() {
-                            let _ = stop_tx.send(code);
-                        }
+                        eprintln!("SystemController: dropping arbiters");
+                        // destroy all arbiters
+                        // drop waits for threads to complete
+                        self.arbiters.clear();
+
+                        break code;
                     }
 
-                    SystemCommand::RegisterArbiter(id, arb) => {
-                        self.arbiters.insert(id, arb);
+                    SystemCommand::RegisterArbiter(arb) => {
+                        self.arbiters.insert(arb.id(), arb);
                     }
 
                     SystemCommand::DeregisterArbiter(id) => {
-                        self.arbiters.remove(&id);
+                        // implicit arbiter drop
+                        let _ = self.arbiters.remove(&id);
                     }
                 },
             }
-        }
+        };
+
+        self.stop_tx.take().unwrap().send(code).unwrap();
+
+        Poll::Ready(())
     }
 }

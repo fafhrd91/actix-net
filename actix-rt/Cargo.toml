@@ -26,6 +26,7 @@ macros = ["actix-macros"]
 actix-macros = { version = "0.2.0", optional = true }
 
 futures-core = { version = "0.3", default-features = false }
+futures-intrusive = "0.4"
 tokio = { version = "1.2", features = ["rt", "net", "parking_lot", "signal", "sync", "time"] }
 
 [dev-dependencies]
