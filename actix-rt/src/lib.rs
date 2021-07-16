@@ -160,9 +160,10 @@ pub mod task {
 /// # Panics
 /// Panics if Actix system is not running.
 #[inline]
-pub fn spawn<Fut>(f: Fut) -> JoinHandle<()>
+pub fn spawn<Fut>(f: Fut) -> JoinHandle<Fut::Output>
 where
-    Fut: Future<Output = ()> + 'static,
+    Fut: Future + 'static,
+    Fut::Output: 'static,
 {
     tokio::task::spawn_local(f)
 }
